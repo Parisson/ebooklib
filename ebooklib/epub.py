@@ -1,5 +1,5 @@
 # This file is part of EbookLib.
-# Copyright (c) 2013 Aleksandar Erkalovic <aerkalov@gmail.com>
+# Copyright (c) 2012 Aleksandar Erkalovic <aerkalov@gmail.com>
 #
 # EbookLib is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -114,12 +114,13 @@ class EpubException(Exception):
 ## Items
 
 class EpubItem(object):
-    def __init__(self, uid=None, file_name='', media_type='', content=''):
+    def __init__(self, uid=None, file_name='', media_type='', content='', manifest=True):
         self.id = uid
         self.file_name = file_name
         self.media_type = media_type
         self.content = content
         self.is_linear = True
+        self.manifest = manifest
 
         self.book = None
 
@@ -453,7 +454,7 @@ class EpubBook(object):
 
     def set_unique_metadata(self, namespace, name, value, others = None):
         "Add metadata if metadata with this identifier does not already exist, otherwise update existing metadata."
-        
+
         if namespace in NAMESPACES:
             namespace = NAMESPACES[namespace]
 
@@ -620,6 +621,9 @@ class EpubWriter(object):
         # cover-image
 
         for item in self.book.get_items():
+            if not item.manifest:
+                continue
+
             if isinstance(item, EpubNav):
                 etree.SubElement(manifest, 'item', {'href': item.get_name(),
                                                     'id': item.id,
@@ -758,7 +762,6 @@ class EpubWriter(object):
                     a.text = item.title
                 elif isinstance(item, EpubHtml):
                     li = etree.SubElement(ol, 'li')
-                    
                     a = etree.SubElement(li, 'a', {'href': os.path.relpath(item.file_name, nav_dir_name)})
                     a.text = item.title
 
@@ -769,8 +772,8 @@ class EpubWriter(object):
 
         if len(self.book.guide) > 0 and self.options.get('epub3_landmark'):
 
-            # Epub2 guide types do not map completely to epub3 landmark types. 
-            guideToLandscapeMap = {
+            # Epub2 guide types do not map completely to epub3 landmark types.
+            guide_to_landscape_map = {
                 'notes': 'rearnotes',
                 'text': 'bodymatter'
             }
@@ -794,8 +797,8 @@ class EpubWriter(object):
                     _href = elem.get('href', '')
                     _title = elem.get('title', '')
 
-                guideType = elem.get('type', '') 
-                a_item = etree.SubElement(li_item, 'a', {'{%s}type' % NAMESPACES['EPUB']: guideToLandscapeMap.get(guideType, guideType), 'href': os.path.relpath(_href, nav_dir_name)})
+                guide_type = elem.get('type', '')
+                a_item = etree.SubElement(li_item, 'a', {'{%s}type' % NAMESPACES['EPUB']: guide_to_landscape_map.get(guide_type, guide_type), 'href': _href})
                 a_item.text = _title
 
         tree_str = etree.tostring(root, pretty_print=True, encoding='utf-8', xml_declaration=True)
@@ -887,8 +890,10 @@ class EpubWriter(object):
                 self.out.writestr('%s/%s' % (self.book.FOLDER_NAME, item.file_name), self._get_ncx())
             elif isinstance(item, EpubNav):
                 self.out.writestr('%s/%s' % (self.book.FOLDER_NAME, item.file_name), self._get_nav(item))
-            else:
+            elif item.manifest:
                 self.out.writestr('%s/%s' % (self.book.FOLDER_NAME, item.file_name), item.get_content())
+            else:
+                self.out.writestr('%s' % item.file_name, item.get_content())
 
     def write(self):
         # check for the option allowZip64
